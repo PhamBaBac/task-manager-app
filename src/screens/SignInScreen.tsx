@@ -17,6 +17,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Checkbox } from 'expo-checkbox';
 import { Ionicons } from '@expo/vector-icons';
 import Button from '../components/Button';
+import ForgotPasswordModal from '../components/ForgotPasswordModal';
 
 type AuthMode = 'email' | 'phone' | 'employee' | 'otp';
 
@@ -61,6 +62,7 @@ export const SignInScreen: React.FC<Props> = ({
   const [isPasswordFocused, setIsPasswordFocused] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
 
   // Phone form state
   const [countryCode, setCountryCode] = useState('INA');
@@ -81,19 +83,21 @@ export const SignInScreen: React.FC<Props> = ({
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [otpError, setOtpError] = useState('');
   const [resendCooldown, setResendCooldown] = useState(60);
-  const otpInputs = useRef<Array<TextInput | null>>([]);
+  const otpInputs = useRef<(TextInput | null)[]>([]);
 
   const [isLoading, setIsLoading] = useState(false);
 
   // Timer for OTP resend cooldown
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval> | undefined;
     if (authMode === 'otp' && resendCooldown > 0) {
       interval = setInterval(() => {
         setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
       }, 1000);
     }
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [authMode, resendCooldown]);
 
   // Handle Back Button
@@ -245,10 +249,7 @@ export const SignInScreen: React.FC<Props> = ({
     if (onForgotPassword) {
       onForgotPassword();
     } else {
-      Alert.alert(
-        'Forgot Password',
-        'Password reset link will be sent to your registered address.'
-      );
+      setShowForgotPasswordModal(true);
     }
   };
 
@@ -865,7 +866,7 @@ export const SignInScreen: React.FC<Props> = ({
                 {/* Resend Link */}
                 <View style={styles.resendRow}>
                   <Text style={styles.resendNormalText}>
-                    Haven't received the sign in code?{' '}
+                    {"Haven't received the sign in code? "}
                   </Text>
                   <TouchableOpacity
                     activeOpacity={0.7}
@@ -918,7 +919,7 @@ export const SignInScreen: React.FC<Props> = ({
                 </View>
               ) : (
                 <View style={styles.footerRow}>
-                  <Text style={styles.footerText}>Don't have an account? </Text>
+                  <Text style={styles.footerText}>{"Don't have an account? "}</Text>
                   <TouchableOpacity
                     activeOpacity={0.7}
                     onPress={onNavigateToSignUp}
@@ -932,6 +933,19 @@ export const SignInScreen: React.FC<Props> = ({
           )}
         </View>
       </KeyboardAvoidingView>
+
+      {/* Forgot Password Flow Modal */}
+      <ForgotPasswordModal
+        visible={showForgotPasswordModal}
+        initialEmail={email}
+        onClose={() => setShowForgotPasswordModal(false)}
+        onSuccess={(newEmail, newPassword) => {
+          setEmail(newEmail);
+          setPassword(newPassword);
+          setAuthMode('email');
+          setShowForgotPasswordModal(false);
+        }}
+      />
     </View>
   );
 };

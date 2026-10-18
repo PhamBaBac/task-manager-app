@@ -14,7 +14,14 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { OnboardingScreen, SignInScreen, SignUpScreen } from './src/screens';
+import {
+  OnboardingScreen,
+  SignInScreen,
+  SignUpScreen,
+  WorkProfileScreen,
+  ProfileScreen,
+  type UserProfileData,
+} from './src/screens';
 
 export interface Task {
   id: string;
@@ -53,11 +60,13 @@ const DEFAULT_TASKS: Task[] = [
   },
 ];
 
-type Screen = 'onboarding' | 'signIn' | 'signUp' | 'main';
+type Screen = 'onboarding' | 'signIn' | 'signUp' | 'workProfile' | 'profile' | 'main';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfileData | null>(null);
+  const [isWorkProfileCompleted, setIsWorkProfileCompleted] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
   const [taskText, setTaskText] = useState('');
@@ -257,13 +266,78 @@ export default function App() {
             setCurrentScreen('main');
           }}
           onSetUpProfile={async (userData) => {
+            const initialProfile: UserProfileData = {
+              firstName: 'Torvald',
+              lastName: 'Grumpy',
+              email: userData.email,
+              phone: userData.phone,
+              dateOfBirth: '',
+              position: '',
+              address: '',
+              avatarUri: undefined,
+            };
+            setUserProfile(initialProfile);
+            setIsWorkProfileCompleted(false);
             try {
               await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
               await AsyncStorage.setItem(AUTH_KEY, JSON.stringify({ email: userData.email }));
             } catch {}
             setUserEmail(userData.email);
-            setCurrentScreen('main');
+            // Navigate to Screen 1: SignUp/CompleteProfile
+            setCurrentScreen('profile');
           }}
+        />
+      </SafeAreaProvider>
+    );
+  }
+
+  if (currentScreen === 'workProfile') {
+    return (
+      <SafeAreaProvider>
+        <WorkProfileScreen
+          initialData={
+            isWorkProfileCompleted
+              ? userProfile || undefined
+              : { email: userEmail || 'Torvald@work.com' } // Empty fields so it opens Screen 2: SignUp/WorkProfileEmpty!
+          }
+          onBack={() => setCurrentScreen('profile')}
+          onSaveProfileSuccess={(data) => {
+            setUserProfile(data);
+            setIsWorkProfileCompleted(true);
+            // After saving, returns to Profile screen in completed mode (Screen 6 / Screen 7)
+            setCurrentScreen('profile');
+          }}
+        />
+      </SafeAreaProvider>
+    );
+  }
+
+  if (currentScreen === 'profile') {
+    return (
+      <SafeAreaProvider>
+        <ProfileScreen
+          profileData={userProfile || undefined}
+          isWorkProfileCompleted={isWorkProfileCompleted}
+          onBack={() => {
+            if (!isWorkProfileCompleted) {
+              setCurrentScreen('signUp');
+            } else {
+              setCurrentScreen('main');
+            }
+          }}
+          onSetUpWorkProfile={() => {
+            // Tapping "Set Up Work Profile" opens Screen 2: SignUp/WorkProfileEmpty
+            setCurrentScreen('workProfile');
+          }}
+          onEditProfile={() => setCurrentScreen('workProfile')}
+          onLogout={async () => {
+            await AsyncStorage.removeItem(AUTH_KEY);
+            setUserEmail(null);
+            setUserProfile(null);
+            setIsWorkProfileCompleted(false);
+            setCurrentScreen('signIn');
+          }}
+          onContinueToApp={() => setCurrentScreen('main')}
         />
       </SafeAreaProvider>
     );
@@ -298,25 +372,12 @@ export default function App() {
 
             {userEmail ? (
               <TouchableOpacity
-                onPress={() => {
-                  Alert.alert('Đăng xuất', `Bạn có muốn đăng xuất khỏi ${userEmail}?`, [
-                    { text: 'Huỷ', style: 'cancel' },
-                    {
-                      text: 'Đăng xuất',
-                      style: 'destructive',
-                      onPress: async () => {
-                        await AsyncStorage.removeItem(AUTH_KEY);
-                        setUserEmail(null);
-                        setCurrentScreen('signIn');
-                      },
-                    },
-                  ]);
-                }}
+                onPress={() => setCurrentScreen('profile')}
                 style={styles.userBtn}
               >
                 <Ionicons name="person-circle-outline" size={16} color="#4F46E5" />
                 <Text style={styles.userBtnText} numberOfLines={1}>
-                  {userEmail.split('@')[0]}
+                  {userProfile?.firstName || userEmail.split('@')[0]}
                 </Text>
               </TouchableOpacity>
             ) : (

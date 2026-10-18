@@ -10,6 +10,7 @@ import Row from './Row';
 import Section from './Section';
 import Space from './Space';
 import Text from './Text';
+import ForgotPasswordModal from './ForgotPasswordModal';
 
 export {
   Loading,
@@ -24,4 +25,6 @@ export {
   Divider,
   Dropdown,
   Col,
+  ForgotPasswordModal,
 };
+

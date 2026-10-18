@@ -77,7 +77,7 @@ export const SignUpScreen: React.FC<Props> = ({
   const [otpError, setOtpError] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
   const [isVerifying, setIsVerifying] = useState(false);
-  const otpInputs = useRef<Array<TextInput | null>>([]);
+  const otpInputs = useRef<(TextInput | null)[]>([]);
 
   // Welcome Success modal state (Screen 4: SignUp/Success)
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -102,7 +102,7 @@ export const SignUpScreen: React.FC<Props> = ({
 
   // Countdown timer for OTP resend
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
+    let interval: ReturnType<typeof setInterval> | null = null;
     if (resendCooldown > 0) {
       interval = setInterval(() => {
         setResendCooldown((prev) => prev - 1);
@@ -826,7 +826,7 @@ export const SignUpScreen: React.FC<Props> = ({
             {/* Resend Link */}
             <View style={styles.resendRow}>
               <Text style={styles.resendNormalText}>
-                Haven't received the verification code?{' '}
+                {"Haven't received the verification code? "}
               </Text>
               <TouchableOpacity
                 activeOpacity={0.7}
