@@ -6,15 +6,14 @@ import {
   TouchableOpacity,
   View,
   type ViewStyle,
+  type TextStyle,
 } from 'react-native';
 import Text from './Text';
 import Row from './Row';
 import { globalStyles } from '../styles/globalStyles';
 import { colors } from '../colors/colors';
 import Space from './Space';
-import AntDesign from 'react-native-vector-icons/AntDesign';
-import IonIcons from 'react-native-vector-icons/Ionicons';
-import type { TextStyle } from 'react-native';
+import { AntDesign, Ionicons as IonIcons } from '@expo/vector-icons';
 
 interface Props {
   placeholder?: string;
@@ -212,9 +211,11 @@ const Input = (props: Props) => {
           secureTextEntry={isShowPass}
           onFocus={() => setIsFocused(true)}
           onEndEditing={() => {
-            required && value.length === 0
-              ? setIsError(true)
-              : setIsError(false);
+            if (required && value.length === 0) {
+              setIsError(true);
+            } else {
+              setIsError(false);
+            }
             setIsFocused(false);
           }}
           multiline={textAreal}

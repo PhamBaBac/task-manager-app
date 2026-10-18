@@ -23,8 +23,12 @@ import { numberToString } from './src/utils/numberToString';
 import { replaceHtmlTags } from './src/utils/replaceHtmlTags';
 import { replaceName} from './src/utils/replaceName';
 import { Validator } from './src/utils/validators';
+import { OnboardingScreen } from './src/screens/OnboardingScreen';
+import { SignInScreen } from './src/screens';
 
 export {
+  OnboardingScreen,
+  SignInScreen,
   CheckboxItem,
   CheckboxTree,
   Label,

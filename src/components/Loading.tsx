@@ -1,7 +1,6 @@
 import React from 'react';
-import { ActivityIndicator, Modal, View } from 'react-native';
+import { ActivityIndicator, Dimensions, Modal, View } from 'react-native';
 import { globalStyles } from '../styles/globalStyles';
-import { Dimensions } from 'react-native';
 import Text from './Text';
 import Space from './Space';
 import Button from './Button';

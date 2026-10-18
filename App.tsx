@@ -6,14 +6,15 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
-  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
   Alert,
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import { OnboardingScreen, SignInScreen, SignUpScreen } from './src/screens';
 
 export interface Task {
   id: string;
@@ -24,59 +25,44 @@ export interface Task {
 }
 
 const STORAGE_KEY = '@task_manager_tasks_v1';
+const ONBOARDING_KEY = '@onboarding_completed_v1';
+const AUTH_KEY = '@auth_user_v1';
+
+// Sample default tasks shown the first time the app opens
+const DEFAULT_TASKS: Task[] = [
+  {
+    id: '1',
+    title: 'Chào mừng bạn đến với Task Manager! 👋',
+    completed: false,
+    priority: 'high',
+    createdAt: Date.now(),
+  },
+  {
+    id: '2',
+    title: 'Chạm vào dấu tích tròn để hoàn thành task',
+    completed: true,
+    priority: 'medium',
+    createdAt: Date.now() - 10000,
+  },
+  {
+    id: '3',
+    title: 'Vuốt hoặc bấm nút thùng rác để xoá',
+    completed: false,
+    priority: 'low',
+    createdAt: Date.now() - 20000,
+  },
+];
+
+type Screen = 'onboarding' | 'signIn' | 'signUp' | 'main';
 
 export default function App() {
+  const [currentScreen, setCurrentScreen] = useState<Screen | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [isHydrated, setIsHydrated] = useState(false);
   const [taskText, setTaskText] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
-
-  // Load tasks on mount
-  useEffect(() => {
-    loadTasks();
-  }, []);
-
-  // Save tasks on changes
-  useEffect(() => {
-    saveTasks(tasks);
-  }, [tasks]);
-
-  const loadTasks = async () => {
-    try {
-      const jsonValue = await AsyncStorage.getItem(STORAGE_KEY);
-      if (jsonValue != null) {
-        setTasks(JSON.parse(jsonValue));
-      } else {
-        // Sample default tasks for first time opening
-        const initialTasks: Task[] = [
-          {
-            id: '1',
-            title: 'Chào mừng bạn đến với Task Manager! 👋',
-            completed: false,
-            priority: 'high',
-            createdAt: Date.now(),
-          },
-          {
-            id: '2',
-            title: 'Chạm vào dấu tích tròn để hoàn thành task',
-            completed: true,
-            priority: 'medium',
-            createdAt: Date.now() - 10000,
-          },
-          {
-            id: '3',
-            title: 'Vuốt hoặc bấm nút thùng rác để xoá',
-            completed: false,
-            priority: 'low',
-            createdAt: Date.now() - 20000,
-          },
-        ];
-        setTasks(initialTasks);
-      }
-    } catch (e) {
-      console.error('Failed to load tasks', e);
-    }
-  };
 
   const saveTasks = async (newTasks: Task[]) => {
     try {
@@ -85,6 +71,60 @@ export default function App() {
       console.error('Failed to save tasks', e);
     }
   };
+
+  // Hydrate persisted state on mount
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const storedOnboarding = await AsyncStorage.getItem(ONBOARDING_KEY);
+        const storedUser = await AsyncStorage.getItem(AUTH_KEY);
+        if (storedUser) {
+          try {
+            const parsed = JSON.parse(storedUser);
+            setUserEmail(parsed.email ?? null);
+          } catch {}
+        }
+        if (!cancelled) {
+          setCurrentScreen(storedOnboarding !== 'true' ? 'onboarding' : 'main');
+        }
+      } catch {
+        if (!cancelled) {
+          setCurrentScreen('main');
+        }
+      }
+
+      try {
+        const jsonValue = await AsyncStorage.getItem(STORAGE_KEY);
+        const parsed: Task[] | null =
+          jsonValue != null ? JSON.parse(jsonValue) : null;
+        if (!cancelled) {
+          setTasks(parsed ?? DEFAULT_TASKS);
+        }
+      } catch (e) {
+        console.error('Failed to load tasks', e);
+        if (!cancelled) {
+          setTasks(DEFAULT_TASKS);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsHydrated(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Persist tasks, but never before hydration so the initial empty
+  // state cannot overwrite what is already in storage
+  useEffect(() => {
+    if (!isHydrated) return;
+    void saveTasks(tasks);
+  }, [isHydrated, tasks]);
 
   const addTask = () => {
     if (!taskText.trim()) return;
@@ -148,8 +188,82 @@ export default function App() {
     }
   };
 
+  if (currentScreen === 'onboarding') {
+    return (
+      <SafeAreaProvider>
+        <OnboardingScreen
+          onComplete={async () => {
+            try {
+              await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
+            } catch {}
+            setCurrentScreen('main');
+          }}
+          onSkip={async () => {
+            try {
+              await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
+            } catch {}
+            setCurrentScreen('main');
+          }}
+          onSignIn={() => {
+            setCurrentScreen('signIn');
+          }}
+          onSignUp={() => {
+            setCurrentScreen('signUp');
+          }}
+        />
+      </SafeAreaProvider>
+    );
+  }
+
+  if (currentScreen === 'signIn') {
+    return (
+      <SafeAreaProvider>
+        <SignInScreen
+          onBack={() => {
+            setCurrentScreen('onboarding');
+          }}
+          onSuccess={async (email) => {
+            try {
+              await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
+              await AsyncStorage.setItem(AUTH_KEY, JSON.stringify({ email }));
+            } catch {}
+            setUserEmail(email);
+            setCurrentScreen('main');
+          }}
+          onNavigateToSignUp={() => {
+            setCurrentScreen('signUp');
+          }}
+        />
+      </SafeAreaProvider>
+    );
+  }
+
+  if (currentScreen === 'signUp') {
+    return (
+      <SafeAreaProvider>
+        <SignUpScreen
+          onBack={() => {
+            setCurrentScreen('onboarding');
+          }}
+          onNavigateToSignIn={() => {
+            setCurrentScreen('signIn');
+          }}
+          onSuccess={async (userData) => {
+            try {
+              await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
+              await AsyncStorage.setItem(AUTH_KEY, JSON.stringify({ email: userData.email }));
+            } catch {}
+            setUserEmail(userData.email);
+            setCurrentScreen('main');
+          }}
+        />
+      </SafeAreaProvider>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -165,11 +279,54 @@ export default function App() {
                 : 'Chưa có công việc nào'}
             </Text>
           </View>
-          {completedCount > 0 && (
-            <TouchableOpacity onPress={clearCompleted} style={styles.clearBtn}>
-              <Text style={styles.clearBtnText}>Dọn dẹp</Text>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              onPress={() => setCurrentScreen('onboarding')}
+              style={styles.onboardingBtn}
+            >
+              <Ionicons name="sparkles" size={14} color="#6F3FF3" />
+              <Text style={styles.onboardingBtnText}>Tour</Text>
             </TouchableOpacity>
-          )}
+
+            {userEmail ? (
+              <TouchableOpacity
+                onPress={() => {
+                  Alert.alert('Đăng xuất', `Bạn có muốn đăng xuất khỏi ${userEmail}?`, [
+                    { text: 'Huỷ', style: 'cancel' },
+                    {
+                      text: 'Đăng xuất',
+                      style: 'destructive',
+                      onPress: async () => {
+                        await AsyncStorage.removeItem(AUTH_KEY);
+                        setUserEmail(null);
+                        setCurrentScreen('signIn');
+                      },
+                    },
+                  ]);
+                }}
+                style={styles.userBtn}
+              >
+                <Ionicons name="person-circle-outline" size={16} color="#4F46E5" />
+                <Text style={styles.userBtnText} numberOfLines={1}>
+                  {userEmail.split('@')[0]}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={() => setCurrentScreen('signIn')}
+                style={styles.loginBtn}
+              >
+                <Ionicons name="log-in-outline" size={15} color="#4F46E5" />
+                <Text style={styles.loginBtnText}>Sign In</Text>
+              </TouchableOpacity>
+            )}
+
+            {completedCount > 0 && (
+              <TouchableOpacity onPress={clearCompleted} style={styles.clearBtn}>
+                <Text style={styles.clearBtnText}>Dọn dẹp</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Priority Selector & Add Input */}
@@ -327,7 +484,8 @@ export default function App() {
         />
       </KeyboardAvoidingView>
     </SafeAreaView>
-  );
+  </SafeAreaProvider>
+);
 }
 
 const styles = StyleSheet.create({
@@ -357,6 +515,25 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 4,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  onboardingBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#EDE9FE',
+    borderRadius: 8,
+  },
+  onboardingBtnText: {
+    color: '#6F3FF3',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   clearBtn: {
     paddingVertical: 6,
     paddingHorizontal: 12,
@@ -367,6 +544,35 @@ const styles = StyleSheet.create({
     color: '#DC2626',
     fontSize: 13,
     fontWeight: '600',
+  },
+  userBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: '#EEF2FF',
+    borderRadius: 8,
+    maxWidth: 120,
+  },
+  userBtnText: {
+    color: '#4F46E5',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  loginBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: '#EEF2FF',
+    borderRadius: 8,
+  },
+  loginBtnText: {
+    color: '#4F46E5',
+    fontSize: 12,
+    fontWeight: '700',
   },
   inputCard: {
     backgroundColor: '#FFFFFF',
