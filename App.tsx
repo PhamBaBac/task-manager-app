@@ -256,6 +256,14 @@ export default function App() {
             setUserEmail(userData.email);
             setCurrentScreen('main');
           }}
+          onSetUpProfile={async (userData) => {
+            try {
+              await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
+              await AsyncStorage.setItem(AUTH_KEY, JSON.stringify({ email: userData.email }));
+            } catch {}
+            setUserEmail(userData.email);
+            setCurrentScreen('main');
+          }}
         />
       </SafeAreaProvider>
     );

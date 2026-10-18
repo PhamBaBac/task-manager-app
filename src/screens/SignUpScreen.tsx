@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Alert,
   Dimensions,
@@ -22,6 +22,7 @@ interface Props {
   onBack?: () => void;
   onNavigateToSignIn?: () => void;
   onSuccess?: (userData: { email: string; phone: string; companyId: string }) => void;
+  onSetUpProfile?: (userData: { email: string; phone: string; companyId: string }) => void;
 }
 
 interface CountryOption {
@@ -44,6 +45,7 @@ export const SignUpScreen: React.FC<Props> = ({
   onBack,
   onNavigateToSignIn,
   onSuccess,
+  onSetUpProfile,
 }) => {
   // Form fields
   const [email, setEmail] = useState('');
@@ -69,6 +71,17 @@ export const SignUpScreen: React.FC<Props> = ({
   // Loading state
   const [isLoading, setIsLoading] = useState(false);
 
+  // Email Verification modal state (Screen 2 & 3: SignUp/EmailVerification)
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [otpError, setOtpError] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const otpInputs = useRef<Array<TextInput | null>>([]);
+
+  // Welcome Success modal state (Screen 4: SignUp/Success)
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+
   // Keyboard visibility state (prevents footer from squeezing form when keyboard opens)
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
 
@@ -86,6 +99,19 @@ export const SignUpScreen: React.FC<Props> = ({
       hideSub.remove();
     };
   }, []);
+
+  // Countdown timer for OTP resend
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (resendCooldown > 0) {
+      interval = setInterval(() => {
+        setResendCooldown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [resendCooldown]);
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -141,23 +167,92 @@ export const SignUpScreen: React.FC<Props> = ({
     setIsLoading(true);
     setTimeout(() => {
       setIsLoading(false);
-      Alert.alert(
-        'Registration Successful! 🎉',
-        `Welcome to Work Mate! Your account (${email.trim()}) has been created.`,
-        [
-          {
-            text: 'Continue',
-            onPress: () => {
-              onSuccess?.({
-                email: email.trim(),
-                phone: `${selectedCountry.dialCode} ${phone.trim()}`,
-                companyId: companyId.trim(),
-              });
-            },
-          },
-        ]
-      );
-    }, 600);
+      setOtpDigits(['', '', '', '', '', '']);
+      setOtpError('');
+      setResendCooldown(60);
+      setShowVerificationModal(true);
+      setTimeout(() => {
+        otpInputs.current[0]?.focus();
+      }, 350);
+    }, 450);
+  };
+
+  // Handle OTP digit changes
+  const handleOtpChange = (val: string, index: number) => {
+    setOtpError('');
+
+    // Handle paste of multiple digits
+    if (val.length > 1) {
+      const cleaned = val.replace(/\D/g, '').slice(0, 6);
+      const newDigits = [...otpDigits];
+      for (let i = 0; i < cleaned.length; i++) {
+        newDigits[i] = cleaned[i];
+      }
+      setOtpDigits(newDigits);
+      const nextIdx = Math.min(cleaned.length, 5);
+      otpInputs.current[nextIdx]?.focus();
+      return;
+    }
+
+    const newDigits = [...otpDigits];
+    newDigits[index] = val;
+    setOtpDigits(newDigits);
+
+    if (val && index < 5) {
+      otpInputs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyPress = (e: any, index: number) => {
+    if (e.nativeEvent.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      otpInputs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleResendVerificationCode = () => {
+    if (resendCooldown > 0) return;
+    setResendCooldown(60);
+    Alert.alert('Code Resent', `A new 6-digit verification code has been sent to ${email.trim()}.`);
+  };
+
+  const handleVerificationSubmit = () => {
+    const code = otpDigits.join('');
+    if (code.length < 6) {
+      setOtpError('Please enter the full 6-digit verification code');
+      return;
+    }
+
+    setIsVerifying(true);
+    setTimeout(() => {
+      setIsVerifying(false);
+      setShowVerificationModal(false);
+      setTimeout(() => {
+        setShowSuccessModal(true);
+      }, 300);
+    }, 550);
+  };
+
+  const handleSetUpProfilePress = () => {
+    setShowSuccessModal(false);
+    const data = {
+      email: email.trim(),
+      phone: `${selectedCountry.dialCode} ${phone.trim()}`,
+      companyId: companyId.trim(),
+    };
+    if (onSetUpProfile) {
+      onSetUpProfile(data);
+    } else {
+      onSuccess?.(data);
+    }
+  };
+
+  const handleExploreAppPress = () => {
+    setShowSuccessModal(false);
+    onSuccess?.({
+      email: email.trim(),
+      phone: `${selectedCountry.dialCode} ${phone.trim()}`,
+      companyId: companyId.trim(),
+    });
   };
 
   return (
@@ -671,6 +766,148 @@ export const SignUpScreen: React.FC<Props> = ({
           </View>
         </View>
       </Modal>
+
+      {/* ==================== SCREEN 2 & 3: EMAIL VERIFICATION MODAL ==================== */}
+      <Modal
+        visible={showVerificationModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowVerificationModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.sheetCardWithFloatingBadge}>
+            {/* Top Floating Badge with Mail & Red Notification Dot */}
+            <View style={styles.floatingModalBadge}>
+              <Ionicons name="mail" size={26} color="#FFFFFF" />
+              <View style={styles.badgeNotificationDot} />
+            </View>
+
+            <View style={styles.sheetHandle} />
+
+            <Text style={styles.sheetModalTitle}>Email Verification Sent!</Text>
+            <Text style={styles.sheetModalSubtitle}>
+              A verification code will be sent to the email{' '}
+              <Text style={styles.highlightText}>
+                {email.trim() || 'Hello@work.com'}
+              </Text>{' '}
+              for your account verification process.
+            </Text>
+
+            {/* 6 OTP Input Boxes */}
+            <View style={styles.otpRow}>
+              {otpDigits.map((digit, idx) => (
+                <TextInput
+                  key={idx}
+                  ref={(ref) => {
+                    otpInputs.current[idx] = ref;
+                  }}
+                  style={[
+                    styles.otpBox,
+                    Boolean(digit) && styles.otpBoxFilled,
+                    Boolean(otpError) && styles.otpBoxError,
+                  ]}
+                  value={digit}
+                  onChangeText={(val) => handleOtpChange(val, idx)}
+                  onKeyPress={(e) => handleOtpKeyPress(e, idx)}
+                  keyboardType="number-pad"
+                  maxLength={1}
+                  selectTextOnFocus
+                  textAlign="center"
+                />
+              ))}
+            </View>
+            {Boolean(otpError) && (
+              <Text style={styles.otpErrorText}>{otpError}</Text>
+            )}
+
+            {/* Resend Link */}
+            <View style={styles.resendRow}>
+              <Text style={styles.resendNormalText}>
+                Haven't received the verification code?{' '}
+              </Text>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={handleResendVerificationCode}
+                disabled={resendCooldown > 0}
+              >
+                <Text
+                  style={[
+                    styles.resendLinkText,
+                    resendCooldown > 0 && styles.resendDisabled,
+                  ]}
+                >
+                  {resendCooldown > 0 ? `Resend It (${resendCooldown}s)` : 'Resend It.'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Submit Button */}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={handleVerificationSubmit}
+              disabled={isVerifying}
+              style={[
+                styles.sheetPrimaryButton,
+                isVerifying && styles.sheetButtonDisabled,
+              ]}
+            >
+              <Text style={styles.sheetPrimaryButtonText}>
+                {isVerifying ? 'Verifying...' : 'Submit'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ==================== SCREEN 4: WELCOME SUCCESS MODAL ==================== */}
+      <Modal
+        visible={showSuccessModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSuccessModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.sheetCardWithFloatingBadge}>
+            {/* Top Floating Badge with Profile Icon */}
+            <View style={styles.floatingModalBadge}>
+              <Ionicons name="person" size={26} color="#FFFFFF" />
+            </View>
+
+            <View style={styles.sheetHandle} />
+
+            <Text style={styles.sheetModalTitle}>Welcome To Work Mate!</Text>
+            <Text style={styles.sheetModalSubtitle}>
+              To enhance your user experience, please set up your profile first.
+              This will help us tailor the app to your needs and ensure you get
+              the most out of our features!
+            </Text>
+
+            {/* Actions */}
+            <View style={styles.welcomeActionsContainer}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={handleSetUpProfilePress}
+                style={styles.sheetPrimaryButton}
+              >
+                <Text style={styles.sheetPrimaryButtonText}>Set Up My Profile</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={handleExploreAppPress}
+                style={styles.sheetSecondaryButton}
+              >
+                <Text style={styles.sheetSecondaryButtonText}>
+                  Explore The App First
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1029,5 +1266,155 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#6B7280',
+  },
+
+  /* Verification & Welcome Modals Styles */
+  sheetCardWithFloatingBadge: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 36,
+    paddingHorizontal: 22,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    position: 'relative',
+    overflow: 'visible',
+  },
+  floatingModalBadge: {
+    position: 'absolute',
+    top: -29,
+    alignSelf: 'center',
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: '#6F3FF3',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#6F3FF3',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 8,
+    zIndex: 10,
+  },
+  badgeNotificationDot: {
+    position: 'absolute',
+    top: 11,
+    right: 11,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#EF4444',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  sheetModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#111827',
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 8,
+    letterSpacing: -0.3,
+  },
+  sheetModalSubtitle: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#6B7280',
+    textAlign: 'center',
+    paddingHorizontal: 12,
+    marginBottom: 16,
+  },
+  highlightText: {
+    color: '#111827',
+    fontWeight: '700',
+  },
+  otpRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: 12,
+  },
+  otpBox: {
+    width: 44,
+    height: 52,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  otpBoxFilled: {
+    borderColor: '#6F3FF3',
+    backgroundColor: '#FAF5FF',
+  },
+  otpBoxError: {
+    borderColor: '#EF4444',
+    backgroundColor: '#FEF2F2',
+  },
+  otpErrorText: {
+    fontSize: 12,
+    color: '#EF4444',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  resendRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  resendNormalText: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  resendLinkText: {
+    fontSize: 12,
+    color: '#6F3FF3',
+    fontWeight: '700',
+  },
+  resendDisabled: {
+    opacity: 0.5,
+  },
+  sheetPrimaryButton: {
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#6F3FF3',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#6F3FF3',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+    marginBottom: 4,
+  },
+  sheetButtonDisabled: {
+    opacity: 0.65,
+  },
+  sheetPrimaryButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  sheetSecondaryButton: {
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  sheetSecondaryButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  welcomeActionsContainer: {
+    marginTop: 12,
+    marginBottom: 6,
   },
 });
